@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>POE 2 Trade Dashboard</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React and ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Recharts and Lucide Icons -->
+    <script src="https://unpkg.com/recharts/umd/Recharts.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body { background-color: #f8fafc; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useMemo, useEffect } = React;
+        const { 
+            LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
+            BarChart, Bar, Cell, ScatterChart, Scatter, ZAxis 
+        } = Recharts;
+
+        // Custom Icon Component (since we are in a browser environment)
+        const Icon = ({ name, className }) => {
+            useEffect(() => {
+                lucide.createIcons();
+            }, [name]);
+            return <i data-lucide={name} className={className}></i>;
+        };
+
+        const RAW_DATA = `
+1/11/2026, 14:42:31,0af48314bb81af9bb14e403a564fb1e19ab2b28aa05bf292fd6fb6d6c095cfac,Onslaught Roar,650,355,Baloch#1592,listed 15 minutes ago,80% increased Critical Hit Chance for Spells,Sum: 50,Sum: 80,Sum: 225
+1/11/2026, 14:42:31,8f1e9e25c2f0646c28c9e68a2400711d4b11094f65aee254281dbae445d61fc4,Miracle Spire,675,466,Rmarkey#6383,listed 20 hours ago,235% increased Spell Damage,Sum: 52,Sum: 95,Sum: 319
+1/11/2026, 14:42:31,be6f47a18edd07991ef5f4cda028319129a53c8d819a8ff15271d547f1677aa4,Rune Mast,700,394,Shirocco22#1718,listed 3 hours ago,42% increased Cast Speed,Gain 38% of Damage as Extra Fire Damage,Sum: 92,Sum: 86,Sum: 216
+1/11/2026, 14:42:31,4fa095286c0166001b6be089ed98fd1f570d6b25f2aa7d1c0dc2b274b8bf9524,Pandemonium Spell,800,399,relicym#2478,listed 9 hours ago,208% increased Spell Damage,Sum: 110,Sum: 81,Sum: 208
+1/11/2026, 14:42:31,e59bde4e81cfcc4df2af3e8a0ead9477adf5ffe8cac49264a83261d8ff8e44ec,Apocalypse Spire,800,397,irosshh#8039,listed 4 hours ago,Gain 68% of Damage as Extra Cold Damage,Sum: 68,Sum: 81,Sum: 248
+1/11/2026, 14:42:31,3ac4e154282dddb58672e8d59965be8bda2d8075515ee8e38f45bb0d98401456,Doom Pile,800,471,TheLastDance#8418,listed a day ago,235% increased Spell Damage,43% increased Cast Speed,Sum: 59,Sum: 89,Sum: 323
+1/11/2026, 14:42:31,cd0c07c0e9792260ab34f008d800205432e1b38cf4b92f84183554242ed24450,Horror Weaver,800,409,XDerBos#5227,listed 7 hours ago,224% increased Spell Damage,Gain 63% of Damage as Extra Fire Damage,Sum: 105,Sum: 80,Sum: 224
+1/11/2026, 14:42:31,9fceb73ad5ebd62632d682aa0fc957b441b761f34fe6ba54837a39a6d4a931e6,Kraken Pole,880,411,gentle666#3975,listed 11 hours ago,Gain 50% of Damage as Extra Cold Damage,Sum: 100,Sum: 106,Sum: 205
+1/11/2026, 14:42:31,a2b2543cd8d9c37f190f140b1207d9b5cfbac29d591d371d1f3b1a75816aa9e6,Blood Roar,900,435,coven#2580,listed 6 hours ago,41% increased Cast Speed,Sum: 116,Sum: 87,Sum: 232
+1/11/2026, 14:42:31,4600ecafd9d8992dedbcef7b4cba0776939e9a7dc6afd22bf06d397a00f20145,Soul Beam,950,451,yapobrilsya#4618,listed 14 hours ago,Gain 48% of Damage as Extra Fire Damage,Sum: 103,Sum: 95,Sum: 253
+1/11/2026, 14:45:17,65d39785632981110d508ec8acb2e528f37942aacdf93c5c6581911c6af2e825,Victory Beam,1000,398,Soulbands#3664,listed 6 hours ago,49% increased Cast Speed,Sum: 116,Sum: 81,Sum: 201
+1/11/2026, 14:52:32,d5a24775626affb65c91501a272f3f5419561a03eea0e19e0c6ae770f494f7b6,Doom Spell,300,436,lopkoTheGod#4261,listed 6 minutes ago,177% increased Spell Damage with Spells that cost Life,Sum: 59,Sum: 107,Sum: 270
+1/11/2026, 15:00:16,4fa095286c0166001b6be089ed98fd1f570d6b25f2aa7d1c0dc2b274b8bf9524,Pandemonium Spell,680,399,relicym#2478,listed 4 minutes ago,208% increased Spell Damage,Sum: 110,Sum: 81,Sum: 208,PRICE DROP (Was 800)
+1/11/2026, 15:15:22,0af48314bb81af9bb14e403a564fb1e19ab2b28aa05bf292fd6fb6d6c095cfac,Onslaught Roar,650,355,Baloch#1592,listed an hour ago,80% increased Critical Hit Chance for Spells,Sum: 50,Sum: 80,Sum: 225
+        `;
+
+        const parseData = (csv) => {
+            return csv.trim().split('\n').map((line, index) => {
+                const parts = line.split(',');
+                const sums = parts.filter(p => p.includes('Sum:')).map(s => parseInt(s.split(':')[1]));
+                const price = parseInt(parts[4]);
+                const score = parseInt(parts[5]);
+                const efficiencyRatio = price > 0 ? parseFloat((score / price).toFixed(3)) : 0;
+
+                return {
+                    id: parts[2],
+                    timestamp: `${parts[0]} ${parts[1]}`,
+                    name: parts[3],
+                    price: price,
+                    score: score,
+                    efficiencyRatio: efficiencyRatio,
+                    seller: parts[6],
+                    age: parts[7],
+                    mods: parts[8],
+                    totalSum: sums.reduce((a, b) => a + b, 0),
+                    isPriceDrop: line.includes('PRICE DROP')
+                };
+            }).filter(item => item.price > 0);
+        };
+
+        const App = () => {
+            const [searchTerm, setSearchTerm] = useState('');
+            const data = useMemo(() => parseData(RAW_DATA), []);
+
+            const stats = useMemo(() => {
+                const prices = data.map(d => d.price);
+                const ratios = data.map(d => d.efficiencyRatio);
+                return {
+                    avgPrice: Math.round(prices.reduce((a, b) => a + b, 0) / prices.length),
+                    totalListings: data.length,
+                    peakEfficiency: Math.max(...ratios)
+                };
+            }, [data]);
+
+            const filteredData = useMemo(() => {
+                return data.filter(item => 
+                    item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                    item.seller.toLowerCase().includes(searchTerm.toLowerCase())
+                ).sort((a, b) => b.efficiencyRatio - a.efficiencyRatio);
+            }, [data, searchTerm]);
+
+            return (
+                <div className="max-w-7xl mx-auto p-4 md:p-8 space-y-8">
+                    <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div>
+                            <h1 className="text-3xl font-bold text-slate-900">POE 2 Market Dashboard</h1>
+                            <p className="text-slate-500">Optimizing for Score/Price Efficiency</p>
+                        </div>
+                        <input 
+                            type="text" 
+                            placeholder="Search listings..." 
+                            className="px-4 py-2 border rounded-xl w-full md:w-80 shadow-sm"
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                        />
+                    </header>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                            <p className="text-sm text-slate-500">Peak Efficiency Ratio</p>
+                            <p className="text-3xl font-bold text-indigo-600">{stats.peakEfficiency}</p>
+                        </div>
+                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                            <p className="text-sm text-slate-500">Average Price</p>
+                            <p className="text-3xl font-bold text-slate-800">{stats.avgPrice}c</p>
+                        </div>
+                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                            <p className="text-sm text-slate-500">Active Listings</p>
+                            <p className="text-3xl font-bold text-slate-800">{stats.totalListings}</p>
+                        </div>
+                    </div>
+
+                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                        <table className="w-full text-left">
+                            <thead className="bg-slate-50 border-b">
+                                <tr>
+                                    <th className="px-6 py-4 font-semibold">Item</th>
+                                    <th className="px-6 py-4 font-semibold">Price (D)</th>
+                                    <th className="px-6 py-4 font-semibold">Score (E)</th>
+                                    <th className="px-6 py-4 font-semibold text-indigo-600">Ratio (E/D)</th>
+                                    <th className="px-6 py-4 font-semibold">Seller</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y">
+                                {filteredData.map((item, idx) => (
+                                    <tr key={idx} className="hover:bg-slate-50">
+                                        <td className="px-6 py-4 font-medium">{item.name}</td>
+                                        <td className="px-6 py-4">{item.price}c</td>
+                                        <td className="px-6 py-4">{item.score}</td>
+                                        <td className="px-6 py-4 font-bold text-indigo-600 bg-indigo-50/20">{item.efficiencyRatio}</td>
+                                        <td className="px-6 py-4 text-sm text-slate-500 font-mono">{item.seller}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
