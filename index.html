@@ -35,12 +35,13 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        // Safe extraction of global variables
-        const { useState, useMemo, useEffect } = React;
+        const { useState, useMemo, useEffect, useCallback } = React;
         const { 
             LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
             BarChart, Bar, Cell 
         } = window.Recharts || {};
+
+        const CSV_URL = `https://docs.google.com/spreadsheets/d/e/2PACX-1vSfkCGBl5HJVSUe9Kn7m5sLfAeFa3wRwbsBMzou0AOBTsWqXuGAFvVXa7-q4w4of-UNT-obNzSfePwj/pub?output=csv`;
 
         // --- Helper Components ---
 
@@ -51,81 +52,98 @@
             return <i data-lucide={name} className={className}></i>;
         };
 
-        const StatCard = ({ title, value, unit, icon, trend, trendUp, subtitle }) => (
+        const StatCard = ({ title, value, unit, icon, subtitle }) => (
             <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 hover:shadow-md transition-all">
                 <div className="flex justify-between items-start mb-4">
                     <div className="p-2.5 bg-slate-50 rounded-2xl">
                         <Icon name={icon} className="w-6 h-6 text-indigo-600" />
                     </div>
-                    {trend && (
-                        <span className={`text-[10px] font-black px-2 py-1 rounded-full uppercase tracking-widest ${trendUp ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
-                            {trend}
-                        </span>
-                    )}
                 </div>
                 <div className="space-y-1">
                     <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{title}</p>
                     <div className="flex items-baseline gap-1">
                         <span className="text-4xl font-black text-slate-900 tracking-tighter">{value}</span>
-                        {unit && <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">{unit}</span>}
+                        {unit && <span className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">{unit}</span>}
                     </div>
                     {subtitle && <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{subtitle}</p>}
                 </div>
             </div>
         );
 
-        const ChartCard = ({ title, children }) => (
-            <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
+        const ChartCard = ({ title, children, isLoading }) => (
+            <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 relative min-h-[300px]">
                 <h3 className="text-sm font-black uppercase tracking-widest mb-8 text-slate-400">{title}</h3>
+                {isLoading && (
+                    <div className="absolute inset-0 bg-white/50 backdrop-blur-[2px] z-10 flex items-center justify-center rounded-3xl">
+                        <Icon name="refresh-cw" className="w-8 h-8 text-indigo-600 animate-spin" />
+                    </div>
+                )}
                 {children}
             </div>
         );
 
-        // --- Data Parsing ---
-
-        const RAW_DATA = `
-1/11/2026, 14:42:31,0af48314bb81af9bb14e403a564fb1e19ab2b28aa05bf292fd6fb6d6c095cfac,Onslaught Roar,650,355,Baloch#1592,listed 15 minutes ago,80% increased Critical Hit Chance for Spells,Sum: 50,Sum: 80,Sum: 225
-1/11/2026, 14:42:31,8f1e9e25c2f0646c28c9e68a2400711d4b11094f65aee254281dbae445d61fc4,Miracle Spire,675,466,Rmarkey#6383,listed 20 hours ago,235% increased Spell Damage,Sum: 52,Sum: 95,Sum: 319
-1/11/2026, 14:42:31,be6f47a18edd07991ef5f4cda028319129a53c8d819a8ff15271d547f1677aa4,Rune Mast,700,394,Shirocco22#1718,listed 3 hours ago,42% increased Cast Speed,Gain 38% of Damage as Extra Fire Damage,Sum: 92,Sum: 86,Sum: 216
-1/11/2026, 14:42:31,4fa095286c0166001b6be089ed98fd1f570d6b25f2aa7d1c0dc2b274b8bf9524,Pandemonium Spell,800,399,relicym#2478,listed 9 hours ago,208% increased Spell Damage,Sum: 110,Sum: 81,Sum: 208
-1/11/2026, 14:42:31,e59bde4e81cfcc4df2af3e8a0ead9477adf5ffe8cac49264a83261d8ff8e44ec,Apocalypse Spire,800,397,irosshh#8039,listed 4 hours ago,Gain 68% of Damage as Extra Cold Damage,Sum: 68,Sum: 81,Sum: 248
-1/11/2026, 14:42:31,3ac4e154282dddb58672e8d59965be8bda2d8075515ee8e38f45bb0d98401456,Doom Pile,800,471,TheLastDance#8418,listed a day ago,235% increased Spell Damage,43% increased Cast Speed,Sum: 59,Sum: 89,Sum: 323
-1/11/2026, 14:42:31,cd0c07c0e9792260ab34f008d800205432e1b38cf4b92f84183554242ed24450,Horror Weaver,800,409,XDerBos#5227,listed 7 hours ago,224% increased Spell Damage,Gain 63% of Damage as Extra Fire Damage,Sum: 105,Sum: 80,Sum: 224
-1/11/2026, 14:42:31,9fceb73ad5ebd62632d682aa0fc957b441b761f34fe6ba54837a39a6d4a931e6,Kraken Pole,880,411,gentle666#3975,listed 11 hours ago,Gain 50% of Damage as Extra Cold Damage,Sum: 100,Sum: 106,Sum: 205
-1/11/2026, 14:42:31,a2b2543cd8d9c37f190f140b1207d9b5cfbac29d591d371d1f3b1a75816aa9e6,Blood Roar,900,435,coven#2580,listed 6 hours ago,41% increased Cast Speed,Sum: 116,Sum: 87,Sum: 232
-1/11/2026, 14:42:31,4600ecafd9d8992dedbcef7b4cba0776939e9a7dc6afd22bf06d397a00f20145,Soul Beam,950,451,yapobrilsya#4618,listed 14 hours ago,Gain 48% of Damage as Extra Fire Damage,Sum: 103,Sum: 95,Sum: 253
-1/11/2026, 14:45:17,65d39785632981110d508ec8acb2e528f37942aacdf93c5c6581911c6af2e825,Victory Beam,1000,398,Soulbands#3664,listed 6 hours ago,49% increased Cast Speed,Sum: 116,Sum: 81,Sum: 201
-1/11/2026, 14:52:32,d5a24775626affb65c91501a272f3f5419561a03eea0e19e0c6ae770f494f7b6,Doom Spell,300,436,lopkoTheGod#4261,listed 6 minutes ago,177% increased Spell Damage with Spells that cost Life,Sum: 59,Sum: 107,Sum: 270
-1/11/2026, 15:00:16,4fa095286c0166001b6be089ed98fd1f570d6b25f2aa7d1c0dc2b274b8bf9524,Pandemonium Spell,680,399,relicym#2478,listed 4 minutes ago,208% increased Spell Damage,Sum: 110,Sum: 81,Sum: 208,PRICE DROP (Was 800)
-1/11/2026, 15:15:22,0af48314bb81af9bb14e403a564fb1e19ab2b28aa05bf292fd6fb6d6c095cfac,Onslaught Roar,650,355,Baloch#1592,listed an hour ago,80% increased Critical Hit Chance for Spells,Sum: 50,Sum: 80,Sum: 225
-`;
+        // --- Robust CSV Parser ---
+        const parseCSVLine = (text) => {
+            const result = [];
+            let cur = '';
+            let inQuote = false;
+            for (let i = 0; i < text.length; i++) {
+                const char = text[i];
+                if (char === '"') {
+                    inQuote = !inQuote;
+                } else if (char === ',' && !inQuote) {
+                    result.push(cur.trim());
+                    cur = '';
+                } else {
+                    cur += char;
+                }
+            }
+            result.push(cur.trim());
+            return result;
+        };
 
         const parseData = (csv) => {
-            return csv.trim().split('\n').map((line) => {
-                const parts = line.split(',');
-                const price = parseInt(parts[4]);
-                const score = parseInt(parts[5]);
+            if (!csv) return [];
+            const lines = csv.trim().split('\n');
+            
+            // Skip header
+            const dataLines = lines.slice(1);
+
+            return dataLines.map((line) => {
+                const parts = parseCSVLine(line);
+                if (parts.length < 5) return null;
+
+                // User Mapping:
+                // Column C (parts[2]): Item Name
+                // Column D (parts[3]): Price
+                // Column E (parts[4]): Value (Score)
+                // Column F (parts[5]): Seller
+                // Column H (parts[7]): Mods
+                // Column J (parts[9]): Sum J
+                // Column K (parts[10]): Sum K
+                // Column L (parts[11]): Sum L
+
+                const name = parts[2];
+                const price = parseInt(parts[3]?.replace(/[^\d]/g, '')) || 0;
+                const score = parseInt(parts[4]?.replace(/[^\d]/g, '')) || 0;
                 const efficiencyRatio = price > 0 ? parseFloat((score / price).toFixed(3)) : 0;
                 
-                // Helper to extract numeric value from strings like "Sum: 50"
                 const getSumValue = (val) => val ? parseInt(val.replace(/[^\d]/g, '')) || 0 : 0;
 
                 return {
-                    id: parts[2],
                     timestamp: `${parts[0]} ${parts[1]}`,
-                    name: parts[3],
+                    name: name,
                     price: price,
                     score: score,
                     efficiencyRatio: efficiencyRatio,
-                    seller: parts[6],
-                    age: parts[7],
-                    mods: parts[8] || '',
-                    sumJ: getSumValue(parts[9]), // Column J
-                    sumK: getSumValue(parts[10]), // Column K
-                    sumL: getSumValue(parts[11]), // Column L
+                    seller: parts[5],
+                    mods: parts[7] || '',
+                    sumJ: getSumValue(parts[9]), 
+                    sumK: getSumValue(parts[10]),
+                    sumL: getSumValue(parts[11]),
                     isPriceDrop: line.includes('PRICE DROP'),
                 };
-            }).filter(item => item && item.price > 0);
+            }).filter(item => item && item.price > 0 && item.name);
         };
 
         // --- Main App Component ---
@@ -133,7 +151,12 @@
         const App = () => {
             const [searchTerm, setSearchTerm] = useState('');
             const [activeTab, setActiveTab] = useState('overview');
-            const data = useMemo(() => parseData(RAW_DATA), []);
+            const [rawData, setRawData] = useState('');
+            const [isLoading, setIsLoading] = useState(true);
+            const [lastUpdated, setLastUpdated] = useState('Never');
+            const [error, setError] = useState(null);
+
+            const data = useMemo(() => parseData(rawData), [rawData]);
 
             const stats = useMemo(() => {
                 const prices = data.map(d => d.price);
@@ -157,14 +180,15 @@
             const priceTrend = useMemo(() => {
                 const groups = {};
                 data.forEach(d => {
-                    if (!groups[d.timestamp]) groups[d.timestamp] = { time: d.timestamp, avg: 0, count: 0 };
-                    groups[d.timestamp].avg += d.price;
-                    groups[d.timestamp].count += 1;
+                    const timeKey = d.timestamp.split(' ')[1] || '00:00:00';
+                    if (!groups[timeKey]) groups[timeKey] = { time: timeKey, avg: 0, count: 0 };
+                    groups[timeKey].avg += d.price;
+                    groups[timeKey].count += 1;
                 });
                 return Object.values(groups).map(g => ({
-                    time: g.time.split(' ')[1],
+                    time: g.time,
                     avgPrice: Math.round(g.avg / g.count)
-                }));
+                })).sort((a, b) => a.time.localeCompare(b.time));
             }, [data]);
 
             const attributeAverages = useMemo(() => {
@@ -182,31 +206,76 @@
                 ];
             }, [data]);
 
+            const handleRefresh = useCallback(async () => {
+                setIsLoading(true);
+                setError(null);
+                try {
+                    const response = await fetch(CSV_URL);
+                    if (!response.ok) throw new Error('Sync failed. Check spreadsheet publish status.');
+                    const text = await response.text();
+                    setRawData(text);
+                    setLastUpdated(new Date().toLocaleTimeString());
+                } catch (err) {
+                    setError(err.message);
+                } finally {
+                    setIsLoading(false);
+                }
+            }, []);
+
+            useEffect(() => {
+                handleRefresh();
+            }, [handleRefresh]);
+
             const COLORS = ['#6366f1', '#8b5cf6', '#ec4899'];
 
             return (
                 <div className="min-h-screen p-4 md:p-8 space-y-8">
-                    <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 max-w-7xl mx-auto">
-                        <div>
+                    <header className="flex flex-col md:flex-row md:items-end justify-between gap-6 max-w-7xl mx-auto">
+                        <div className="space-y-1">
                             <h1 className="text-4xl font-extrabold text-slate-900 tracking-tight">POE 2 Trade Terminal</h1>
-                            <p className="text-slate-500 font-medium mt-1">Focusing on high efficiency Score/Price ratios</p>
+                            <div className="flex items-center gap-3">
+                                <p className="text-slate-500 font-medium text-sm">Active Market Sync</p>
+                                <div className="h-4 w-px bg-slate-300"></div>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
+                                    <Icon name="clock" className="w-3 h-3" /> Last Sync: {lastUpdated}
+                                </p>
+                            </div>
                         </div>
-                        <div className="relative group">
-                            <Icon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
-                            <input 
-                                type="text"
-                                placeholder="Search items, mods, or sellers..."
-                                className="pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-2xl w-full md:w-96 shadow-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                            />
+                        
+                        <div className="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
+                            <button 
+                                onClick={handleRefresh}
+                                disabled={isLoading}
+                                className="flex items-center justify-center gap-2 px-5 py-3 bg-white border border-slate-200 rounded-2xl text-slate-700 font-bold text-sm shadow-sm hover:bg-slate-50 active:scale-95 transition-all disabled:opacity-50 group w-full sm:w-auto"
+                            >
+                                <Icon name="refresh-cw" className={`w-4 h-4 text-indigo-600 ${isLoading ? 'animate-spin' : 'group-hover:rotate-180 transition-transform duration-500'}`} />
+                                {isLoading ? 'Syncing...' : 'Sync Market Data'}
+                            </button>
+                            
+                            <div className="relative group w-full sm:w-auto">
+                                <Icon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+                                <input 
+                                    type="text"
+                                    placeholder="Search listings..."
+                                    className="pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-2xl w-full md:w-80 shadow-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                />
+                            </div>
                         </div>
                     </header>
 
+                    {error && (
+                        <div className="max-w-7xl mx-auto bg-amber-50 border border-amber-200 text-amber-800 px-6 py-4 rounded-2xl flex items-center gap-3">
+                            <Icon name="alert-triangle" className="w-5 h-5 text-amber-600" />
+                            <p className="font-bold text-sm">{error}</p>
+                        </div>
+                    )}
+
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-7xl mx-auto">
-                        <StatCard title="Avg Market Price" value={stats.avgPrice} unit="Divine Orbs" icon="dollar-sign" trend="+4.2%" trendUp={true} />
+                        <StatCard title="Avg Market Price" value={stats.avgPrice} unit="Divine Orbs" icon="dollar-sign" />
                         <StatCard title="Total Listings" value={stats.totalListings} icon="package" />
-                        <StatCard title="Peak Efficiency" value={stats.peakEfficiency} unit="Ratio" icon="zap" subtitle="Best Score/Price" />
-                        <StatCard title="Price Alerts" value={stats.priceDrops} icon="activity" subtitle="Recent drops" />
+                        <StatCard title="Peak Efficiency" value={stats.peakEfficiency} unit="Ratio" icon="zap" />
+                        <StatCard title="Price Alerts" value={stats.priceDrops} icon="activity" />
                     </div>
 
                     <div className="max-w-7xl mx-auto space-y-6">
@@ -224,8 +293,8 @@
                         <main>
                             {activeTab === 'overview' && (
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                                    <ChartCard title="Market Price Trend">
-                                        {window.Recharts ? (
+                                    <ChartCard title="Market Price Trend" isLoading={isLoading}>
+                                        {window.Recharts && data.length > 0 ? (
                                             <ResponsiveContainer width="100%" height={300}>
                                                 <LineChart data={priceTrend}>
                                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
@@ -235,11 +304,11 @@
                                                     <Line type="monotone" dataKey="avgPrice" stroke="#6366f1" strokeWidth={4} dot={{ r: 6, fill: '#6366f1', strokeWidth: 2, stroke: '#fff' }} />
                                                 </LineChart>
                                             </ResponsiveContainer>
-                                        ) : <div className="p-8 text-center text-slate-400">Loading charts...</div>}
+                                        ) : <div className="p-8 text-center text-slate-400 font-bold text-xs uppercase">No Data Synchronized</div>}
                                     </ChartCard>
 
-                                    <ChartCard title="Key Attribute Averages">
-                                        {window.Recharts ? (
+                                    <ChartCard title="Key Attribute Averages" isLoading={isLoading}>
+                                        {window.Recharts && data.length > 0 ? (
                                             <ResponsiveContainer width="100%" height={300}>
                                                 <BarChart data={attributeAverages}>
                                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
@@ -253,21 +322,21 @@
                                                     </Bar>
                                                 </BarChart>
                                             </ResponsiveContainer>
-                                        ) : <div className="p-8 text-center text-slate-400">Loading charts...</div>}
+                                        ) : <div className="p-8 text-center text-slate-400 font-bold text-xs uppercase">No Data Synchronized</div>}
                                     </ChartCard>
                                 </div>
                             )}
 
                             {activeTab === 'table' && (
-                                <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                                <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden relative min-h-[400px]">
                                     <div className="overflow-x-auto">
                                         <table className="w-full text-left">
                                             <thead>
                                                 <tr className="bg-slate-50/50 border-b border-slate-200 text-sm font-bold text-slate-600">
                                                     <th className="px-6 py-5">Item Details</th>
                                                     <th className="px-6 py-5">Price</th>
-                                                    <th className="px-6 py-5">Score</th>
-                                                    <th className="px-6 py-5 bg-indigo-50/30">Value for Money</th>
+                                                    <th className="px-6 py-5">Value</th>
+                                                    <th className="px-6 py-5 bg-indigo-50/30 text-indigo-700">Value for Money</th>
                                                     <th className="px-6 py-5">Seller</th>
                                                 </tr>
                                             </thead>
@@ -301,8 +370,6 @@
                 </div>
             );
         };
-
-        // --- Render ---
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
