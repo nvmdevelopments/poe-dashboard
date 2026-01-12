@@ -1,16 +1,89 @@
-import React, { useState, useMemo } from 'react';
-import { 
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
-  BarChart, Bar, Cell, PieChart, Pie, Legend, ScatterChart, Scatter, ZAxis
-} from 'recharts';
-import { 
-  TrendingDown, TrendingUp, Search, Filter, 
-  Package, DollarSign, Users, Activity,
-  ChevronRight, ArrowUpDown, Zap
-} from 'lucide-react';
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>POE 2 Trade Terminal</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React and ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- PropTypes is strictly required by the Recharts UMD bundle -->
+    <script src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js"></script>
+    <!-- Babel for JSX compilation -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Recharts (Must come after React and PropTypes) -->
+    <script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body { 
+            background-color: #f8fafc; 
+            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; 
+            margin: 0;
+            padding: 0;
+        }
+        .recharts-default-tooltip { 
+            border-radius: 12px !important; 
+            border: none !important; 
+            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1) !important; 
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
 
-// Raw data parsed from the user's spreadsheet content
-const RAW_DATA = `
+    <script type="text/babel">
+        // Safe extraction of global variables
+        const { useState, useMemo, useEffect } = React;
+        const { 
+            LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
+            BarChart, Bar, Cell 
+        } = window.Recharts || {};
+
+        // --- Helper Components ---
+
+        const Icon = ({ name, className }) => {
+            useEffect(() => {
+                if (window.lucide) window.lucide.createIcons();
+            }, [name]);
+            return <i data-lucide={name} className={className}></i>;
+        };
+
+        const StatCard = ({ title, value, unit, icon, trend, trendUp, subtitle }) => (
+            <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 hover:shadow-md transition-all">
+                <div className="flex justify-between items-start mb-4">
+                    <div className="p-2.5 bg-slate-50 rounded-2xl">
+                        <Icon name={icon} className="w-6 h-6 text-indigo-600" />
+                    </div>
+                    {trend && (
+                        <span className={`text-[10px] font-black px-2 py-1 rounded-full uppercase tracking-widest ${trendUp ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
+                            {trend}
+                        </span>
+                    )}
+                </div>
+                <div className="space-y-1">
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{title}</p>
+                    <div className="flex items-baseline gap-1">
+                        <span className="text-4xl font-black text-slate-900 tracking-tighter">{value}</span>
+                        {unit && <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">{unit}</span>}
+                    </div>
+                    {subtitle && <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{subtitle}</p>}
+                </div>
+            </div>
+        );
+
+        const ChartCard = ({ title, children }) => (
+            <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
+                <h3 className="text-sm font-black uppercase tracking-widest mb-8 text-slate-400">{title}</h3>
+                {children}
+            </div>
+        );
+
+        // --- Data Parsing ---
+
+        const RAW_DATA = `
 1/11/2026, 14:42:31,0af48314bb81af9bb14e403a564fb1e19ab2b28aa05bf292fd6fb6d6c095cfac,Onslaught Roar,650,355,Baloch#1592,listed 15 minutes ago,80% increased Critical Hit Chance for Spells,Sum: 50,Sum: 80,Sum: 225
 1/11/2026, 14:42:31,8f1e9e25c2f0646c28c9e68a2400711d4b11094f65aee254281dbae445d61fc4,Miracle Spire,675,466,Rmarkey#6383,listed 20 hours ago,235% increased Spell Damage,Sum: 52,Sum: 95,Sum: 319
 1/11/2026, 14:42:31,be6f47a18edd07991ef5f4cda028319129a53c8d819a8ff15271d547f1677aa4,Rune Mast,700,394,Shirocco22#1718,listed 3 hours ago,42% increased Cast Speed,Gain 38% of Damage as Extra Fire Damage,Sum: 92,Sum: 86,Sum: 216
@@ -27,288 +100,212 @@ const RAW_DATA = `
 1/11/2026, 15:15:22,0af48314bb81af9bb14e403a564fb1e19ab2b28aa05bf292fd6fb6d6c095cfac,Onslaught Roar,650,355,Baloch#1592,listed an hour ago,80% increased Critical Hit Chance for Spells,Sum: 50,Sum: 80,Sum: 225
 `;
 
-const parseData = (csv) => {
-  return csv.trim().split('\n').map((line, index) => {
-    const parts = line.split(',');
-    // Extract numerical sum values from "Sum: X" strings
-    const sums = parts.filter(p => p.includes('Sum:')).map(s => parseInt(s.split(':')[1]));
-    
-    const price = parseInt(parts[4]);
-    const score = parseInt(parts[5]);
-    const efficiencyRatio = price > 0 ? parseFloat((score / price).toFixed(3)) : 0;
+        const parseData = (csv) => {
+            return csv.trim().split('\n').map((line) => {
+                const parts = line.split(',');
+                const price = parseInt(parts[4]);
+                const score = parseInt(parts[5]);
+                const efficiencyRatio = price > 0 ? parseFloat((score / price).toFixed(3)) : 0;
+                
+                // Helper to extract numeric value from strings like "Sum: 50"
+                const getSumValue = (val) => val ? parseInt(val.replace(/[^\d]/g, '')) || 0 : 0;
 
-    return {
-      id: parts[2],
-      timestamp: `${parts[0]} ${parts[1]}`,
-      name: parts[3],
-      price: price,
-      score: score,
-      efficiencyRatio: efficiencyRatio, // Column E (Score) / Column D (Price)
-      seller: parts[6],
-      age: parts[7],
-      mods: parts[8],
-      sum1: sums[0] || 0,
-      sum2: sums[1] || 0,
-      sum3: sums[2] || 0,
-      totalSum: sums.reduce((a, b) => a + b, 0),
-      isPriceDrop: line.includes('PRICE DROP'),
-      originalIndex: index
-    };
-  }).filter(item => item.price > 0);
-};
+                return {
+                    id: parts[2],
+                    timestamp: `${parts[0]} ${parts[1]}`,
+                    name: parts[3],
+                    price: price,
+                    score: score,
+                    efficiencyRatio: efficiencyRatio,
+                    seller: parts[6],
+                    age: parts[7],
+                    mods: parts[8] || '',
+                    sumJ: getSumValue(parts[9]), // Column J
+                    sumK: getSumValue(parts[10]), // Column K
+                    sumL: getSumValue(parts[11]), // Column L
+                    isPriceDrop: line.includes('PRICE DROP'),
+                };
+            }).filter(item => item && item.price > 0);
+        };
 
-const App = () => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState('overview');
+        // --- Main App Component ---
 
-  const data = useMemo(() => parseData(RAW_DATA), []);
+        const App = () => {
+            const [searchTerm, setSearchTerm] = useState('');
+            const [activeTab, setActiveTab] = useState('overview');
+            const data = useMemo(() => parseData(RAW_DATA), []);
 
-  const stats = useMemo(() => {
-    const prices = data.map(d => d.price);
-    const ratios = data.map(d => d.efficiencyRatio);
-    return {
-      avgPrice: Math.round(prices.reduce((a, b) => a + b, 0) / prices.length),
-      totalListings: data.length,
-      peakEfficiency: Math.max(...ratios),
-      priceDrops: data.filter(d => d.isPriceDrop).length
-    };
-  }, [data]);
+            const stats = useMemo(() => {
+                const prices = data.map(d => d.price);
+                const ratios = data.map(d => d.efficiencyRatio);
+                return {
+                    avgPrice: prices.length ? Math.round(prices.reduce((a, b) => a + b, 0) / prices.length) : 0,
+                    totalListings: data.length,
+                    peakEfficiency: ratios.length ? Math.max(...ratios) : 0,
+                    priceDrops: data.filter(d => d.isPriceDrop).length
+                };
+            }, [data]);
 
-  const filteredData = useMemo(() => {
-    return data.filter(item => 
-      item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.seller.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.mods.toLowerCase().includes(searchTerm.toLowerCase())
-    ).sort((a, b) => b.efficiencyRatio - a.efficiencyRatio); // Default sort by Efficiency
-  }, [data, searchTerm]);
+            const filteredData = useMemo(() => {
+                return data.filter(item => 
+                    item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                    item.seller.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                    item.mods.toLowerCase().includes(searchTerm.toLowerCase())
+                ).sort((a, b) => b.efficiencyRatio - a.efficiencyRatio);
+            }, [data, searchTerm]);
 
-  // Aggregated data for charts
-  const priceTrend = useMemo(() => {
-    const groups = {};
-    data.forEach(d => {
-      if (!groups[d.timestamp]) groups[d.timestamp] = { time: d.timestamp, avg: 0, count: 0 };
-      groups[d.timestamp].avg += d.price;
-      groups[d.timestamp].count += 1;
-    });
-    return Object.values(groups).map(g => ({
-      time: g.time.split(' ')[1],
-      avgPrice: Math.round(g.avg / g.count)
-    }));
-  }, [data]);
+            const priceTrend = useMemo(() => {
+                const groups = {};
+                data.forEach(d => {
+                    if (!groups[d.timestamp]) groups[d.timestamp] = { time: d.timestamp, avg: 0, count: 0 };
+                    groups[d.timestamp].avg += d.price;
+                    groups[d.timestamp].count += 1;
+                });
+                return Object.values(groups).map(g => ({
+                    time: g.time.split(' ')[1],
+                    avgPrice: Math.round(g.avg / g.count)
+                }));
+            }, [data]);
 
-  const itemDistribution = useMemo(() => {
-    const counts = {};
-    data.forEach(d => {
-      const base = d.name.split(' ').pop();
-      counts[base] = (counts[base] || 0) + 1;
-    });
-    return Object.entries(counts).map(([name, value]) => ({ name, value }));
-  }, [data]);
+            const attributeAverages = useMemo(() => {
+                if (data.length === 0) return [];
+                const totals = data.reduce((acc, d) => ({
+                    sumJ: acc.sumJ + d.sumJ,
+                    sumK: acc.sumK + d.sumK,
+                    sumL: acc.sumL + d.sumL
+                }), { sumJ: 0, sumK: 0, sumL: 0 });
 
-  const COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f59e0b', '#10b981'];
+                return [
+                    { name: 'Extra Damage', value: Math.round(totals.sumJ / data.length) },
+                    { name: 'Crit Chance', value: Math.round(totals.sumK / data.length) },
+                    { name: 'Spellpower', value: Math.round(totals.sumL / data.length) }
+                ];
+            }, [data]);
 
-  return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 p-4 md:p-8 font-sans">
-      <div className="max-w-7xl mx-auto space-y-8">
-        
-        {/* Header */}
-        <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight text-slate-900">POE 2 Trade Terminal</h1>
-            <p className="text-slate-500 mt-1">Focusing on high efficiency Score/Price ratios</p>
-          </div>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <input 
-              type="text"
-              placeholder="Search items, mods, or sellers..."
-              className="pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl w-full md:w-80 focus:ring-2 focus:ring-indigo-500 outline-none transition-all shadow-sm"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
-        </header>
+            const COLORS = ['#6366f1', '#8b5cf6', '#ec4899'];
 
-        {/* KPI Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard title="Avg Market Price" value={stats.avgPrice} unit="Chaos" icon={<DollarSign className="text-indigo-600" />} trend="+4.2%" trendUp={true} />
-          <StatCard title="Total Listings" value={stats.totalListings} icon={<Package className="text-purple-600" />} />
-          <StatCard title="Peak Efficiency" value={stats.peakEfficiency} unit="Ratio" icon={<Zap className="text-amber-500" />} subtitle="Best Score/Price detected" />
-          <StatCard title="Price Alerts" value={stats.priceDrops} icon={<Activity className="text-red-500" />} subtitle="Recent price drops detected" />
-        </div>
+            return (
+                <div className="min-h-screen p-4 md:p-8 space-y-8">
+                    <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 max-w-7xl mx-auto">
+                        <div>
+                            <h1 className="text-4xl font-extrabold text-slate-900 tracking-tight">POE 2 Trade Terminal</h1>
+                            <p className="text-slate-500 font-medium mt-1">Focusing on high efficiency Score/Price ratios</p>
+                        </div>
+                        <div className="relative group">
+                            <Icon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+                            <input 
+                                type="text"
+                                placeholder="Search items, mods, or sellers..."
+                                className="pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-2xl w-full md:w-96 shadow-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                            />
+                        </div>
+                    </header>
 
-        {/* Tabs */}
-        <div className="flex border-b border-slate-200 gap-8 overflow-x-auto">
-          <TabButton active={activeTab === 'overview'} onClick={() => setActiveTab('overview')} label="Market Overview" />
-          <TabButton active={activeTab === 'analytics'} onClick={() => setActiveTab('analytics')} label="Efficiency Analytics" />
-          <TabButton active={activeTab === 'table'} onClick={() => setActiveTab('table')} label="Live Listings" />
-        </div>
-
-        {/* Content Area */}
-        <main className="min-h-[500px]">
-          {activeTab === 'overview' && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <ChartCard title="Market Price Trend">
-                <ResponsiveContainer width="100%" height={300}>
-                  <LineChart data={priceTrend}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                    <XAxis dataKey="time" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
-                    <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
-                    <Tooltip 
-                      contentStyle={{ backgroundColor: '#fff', borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
-                    />
-                    <Line type="monotone" dataKey="avgPrice" stroke="#6366f1" strokeWidth={3} dot={{ r: 4, fill: '#6366f1' }} activeDot={{ r: 6 }} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </ChartCard>
-
-              <ChartCard title="Listing Base Distribution">
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={itemDistribution}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                    <XAxis dataKey="name" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
-                    <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
-                    <Tooltip 
-                      cursor={{fill: '#f8fafc'}}
-                      contentStyle={{ backgroundColor: '#fff', borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
-                    />
-                    <Bar dataKey="value" radius={[6, 6, 0, 0]}>
-                      {itemDistribution.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </ChartCard>
-            </div>
-          )}
-
-          {activeTab === 'analytics' && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <ChartCard title="Efficiency (Ratio) vs Price">
-                <p className="text-xs text-slate-400 mb-4">Higher points represent items with better Score/Price ratios.</p>
-                <ResponsiveContainer width="100%" height={350}>
-                  <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                    <XAxis type="number" dataKey="price" name="Price" unit="c" stroke="#94a3b8" fontSize={12} />
-                    <YAxis type="number" dataKey="efficiencyRatio" name="Efficiency" stroke="#94a3b8" fontSize={12} />
-                    <ZAxis type="number" range={[50, 400]} />
-                    <Tooltip cursor={{ strokeDasharray: '3 3' }} />
-                    <Scatter name="Items" data={data} fill="#6366f1">
-                      {data.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.efficiencyRatio > 1.2 ? '#10b981' : '#6366f1'} />
-                      ))}
-                    </Scatter>
-                  </ScatterChart>
-                </ResponsiveContainer>
-              </ChartCard>
-
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                <h3 className="font-semibold mb-4 text-slate-700">Top Peak Efficiency Items</h3>
-                <div className="space-y-4">
-                  {data.sort((a, b) => b.efficiencyRatio - a.efficiencyRatio).slice(0, 6).map((item, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 hover:bg-slate-100 transition-colors border-l-4 border-indigo-500">
-                      <div>
-                        <p className="font-medium text-slate-900">{item.name}</p>
-                        <p className="text-xs text-slate-500">Score: {item.score} | Price: {item.price}c</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-bold text-indigo-600 text-lg">{item.efficiencyRatio}</p>
-                        <p className="text-[10px] uppercase font-bold text-slate-400">Ratio (E/D)</p>
-                      </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-7xl mx-auto">
+                        <StatCard title="Avg Market Price" value={stats.avgPrice} unit="Divine Orbs" icon="dollar-sign" trend="+4.2%" trendUp={true} />
+                        <StatCard title="Total Listings" value={stats.totalListings} icon="package" />
+                        <StatCard title="Peak Efficiency" value={stats.peakEfficiency} unit="Ratio" icon="zap" subtitle="Best Score/Price" />
+                        <StatCard title="Price Alerts" value={stats.priceDrops} icon="activity" subtitle="Recent drops" />
                     </div>
-                  ))}
+
+                    <div className="max-w-7xl mx-auto space-y-6">
+                        <div className="flex border-b border-slate-200 gap-8 overflow-x-auto">
+                            <button onClick={() => setActiveTab('overview')} className={`pb-4 px-2 text-sm font-bold relative transition-colors ${activeTab === 'overview' ? 'text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}>
+                                Market Overview
+                                {activeTab === 'overview' && <div className="absolute bottom-0 left-0 w-full h-1 bg-indigo-600 rounded-full" />}
+                            </button>
+                            <button onClick={() => setActiveTab('table')} className={`pb-4 px-2 text-sm font-bold relative transition-colors ${activeTab === 'table' ? 'text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}>
+                                Live Listings
+                                {activeTab === 'table' && <div className="absolute bottom-0 left-0 w-full h-1 bg-indigo-600 rounded-full" />}
+                            </button>
+                        </div>
+
+                        <main>
+                            {activeTab === 'overview' && (
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                    <ChartCard title="Market Price Trend">
+                                        {window.Recharts ? (
+                                            <ResponsiveContainer width="100%" height={300}>
+                                                <LineChart data={priceTrend}>
+                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                                                    <XAxis dataKey="time" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
+                                                    <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
+                                                    <Tooltip />
+                                                    <Line type="monotone" dataKey="avgPrice" stroke="#6366f1" strokeWidth={4} dot={{ r: 6, fill: '#6366f1', strokeWidth: 2, stroke: '#fff' }} />
+                                                </LineChart>
+                                            </ResponsiveContainer>
+                                        ) : <div className="p-8 text-center text-slate-400">Loading charts...</div>}
+                                    </ChartCard>
+
+                                    <ChartCard title="Key Attribute Averages">
+                                        {window.Recharts ? (
+                                            <ResponsiveContainer width="100%" height={300}>
+                                                <BarChart data={attributeAverages}>
+                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                                                    <XAxis dataKey="name" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
+                                                    <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
+                                                    <Tooltip cursor={{ fill: '#f1f5f9' }} />
+                                                    <Bar dataKey="value" radius={[8, 8, 0, 0]}>
+                                                        {attributeAverages.map((entry, index) => (
+                                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                                        ))}
+                                                    </Bar>
+                                                </BarChart>
+                                            </ResponsiveContainer>
+                                        ) : <div className="p-8 text-center text-slate-400">Loading charts...</div>}
+                                    </ChartCard>
+                                </div>
+                            )}
+
+                            {activeTab === 'table' && (
+                                <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-left">
+                                            <thead>
+                                                <tr className="bg-slate-50/50 border-b border-slate-200 text-sm font-bold text-slate-600">
+                                                    <th className="px-6 py-5">Item Details</th>
+                                                    <th className="px-6 py-5">Price</th>
+                                                    <th className="px-6 py-5">Score</th>
+                                                    <th className="px-6 py-5 bg-indigo-50/30">Value for Money</th>
+                                                    <th className="px-6 py-5">Seller</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {filteredData.map((item, idx) => (
+                                                    <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                                                        <td className="px-6 py-5">
+                                                            <div className="font-bold text-slate-900">{item.name}</div>
+                                                            <div className="text-xs text-slate-500 truncate max-w-sm mt-0.5">{item.mods}</div>
+                                                            {item.isPriceDrop && (
+                                                                <span className="inline-flex items-center mt-2 px-2 py-0.5 rounded-full text-[10px] font-black bg-red-100 text-red-600 uppercase tracking-wider">
+                                                                    <Icon name="trending-down" className="w-3 h-3 mr-1" /> Price Drop
+                                                                </span>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-6 py-5 font-mono text-slate-700 font-bold">{item.price}c</td>
+                                                        <td className="px-6 py-5 font-bold text-slate-700">{item.score}</td>
+                                                        <td className="px-6 py-5 font-black text-indigo-600 bg-indigo-50/10">
+                                                            <span className="px-3 py-1 bg-indigo-100/50 rounded-lg">{item.efficiencyRatio}</span>
+                                                        </td>
+                                                        <td className="px-6 py-5 text-sm text-slate-500 font-mono">{item.seller}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
+                        </main>
+                    </div>
                 </div>
-              </div>
-            </div>
-          )}
+            );
+        };
 
-          {activeTab === 'table' && (
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200">
-                      <th className="px-6 py-4 text-sm font-semibold text-slate-600">Item</th>
-                      <th className="px-6 py-4 text-sm font-semibold text-slate-600">Price (D)</th>
-                      <th className="px-6 py-4 text-sm font-semibold text-slate-600">Score (E)</th>
-                      <th className="px-6 py-4 text-sm font-semibold text-slate-600 bg-indigo-50/50">Efficiency (E/D)</th>
-                      <th className="px-6 py-4 text-sm font-semibold text-slate-600">Seller</th>
-                      <th className="px-6 py-4 text-sm font-semibold text-slate-600">Age</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {filteredData.map((item, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50 transition-colors group">
-                        <td className="px-6 py-4">
-                          <p className="font-semibold text-slate-800">{item.name}</p>
-                          <p className="text-xs text-slate-500 truncate max-w-xs">{item.mods}</p>
-                        </td>
-                        <td className="px-6 py-4 font-bold text-slate-600">{item.price}c</td>
-                        <td className="px-6 py-4 font-semibold text-slate-600">{item.score}</td>
-                        <td className={`px-6 py-4 font-black ${item.efficiencyRatio > 1 ? 'text-green-600' : 'text-indigo-600'} bg-indigo-50/20`}>
-                          {item.efficiencyRatio}
-                        </td>
-                        <td className="px-6 py-4 text-sm text-slate-500 font-mono">{item.seller}</td>
-                        <td className="px-6 py-4 text-sm text-slate-500">
-                          {item.isPriceDrop ? (
-                            <span className="flex items-center text-red-500 font-bold">
-                              <TrendingDown className="w-3 h-3 mr-1" /> PRICE DROP
-                            </span>
-                          ) : item.age}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-        </main>
-      </div>
-    </div>
-  );
-};
+        // --- Render ---
 
-// UI Components
-const StatCard = ({ title, value, unit, icon, trend, trendUp, subtitle }) => (
-  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 hover:shadow-md transition-all">
-    <div className="flex justify-between items-start mb-4">
-      <div className="p-2 bg-slate-50 rounded-lg">{icon}</div>
-      {trend && (
-        <span className={`text-xs font-bold px-2 py-1 rounded-full ${trendUp ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
-          {trend}
-        </span>
-      )}
-    </div>
-    <div className="space-y-1">
-      <p className="text-sm font-medium text-slate-500">{title}</p>
-      <div className="flex items-baseline gap-1">
-        <span className="text-3xl font-bold tracking-tight">{value}</span>
-        {unit && <span className="text-sm font-semibold text-slate-400 uppercase tracking-wider">{unit}</span>}
-      </div>
-      {subtitle && <p className="text-xs text-slate-400">{subtitle}</p>}
-    </div>
-  </div>
-);
-
-const TabButton = ({ active, onClick, label }) => (
-  <button
-    onClick={onClick}
-    className={`pb-4 px-2 text-sm font-semibold transition-all relative ${
-      active ? 'text-indigo-600' : 'text-slate-500 hover:text-slate-700'
-    }`}
-  >
-    {label}
-    {active && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-indigo-600 rounded-full" />}
-  </button>
-);
-
-const ChartCard = ({ title, children }) => (
-  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-    <h3 className="text-lg font-bold mb-6 text-slate-800">{title}</h3>
-    {children}
-  </div>
-);
-
-export default App;
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
